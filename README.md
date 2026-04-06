@@ -369,50 +369,55 @@ frontend-mobile/app/
 
 ## Respuestas Técnicas
 
-### 1. ¿Cómo organizaría los componentes en una aplicación Ionic + Angular de gran escala?
+### 1. ¿Cuáles fueron los principales desafíos que enfrentaste al implementar las nuevas funcionalidades?
 
-Organizaría los componentes siguiendo una **arquitectura modular por features** con tres capas:
+**a) Compatibilidad Angular 20 con Cordova:**
+El mayor desafío fue que Ionic CLI genera proyectos con Capacitor por defecto, pero el requisito exigía Cordova. Al integrar Cordova con Angular 20, el comando `ionic cordova build android --prod` falló porque el flag `--platform` no es reconocido por `@angular-devkit/build-angular` en la versión 20. La solución fue separar el proceso: primero compilar la app web con `ng build --configuration production` y luego ejecutar `cordova build android` por separado.
 
-- **Core Module (`core/`)**: Servicios singleton globales (autenticación, HTTP interceptors, guards). Se importa una sola vez en AppModule.
-- **Shared Module (`shared/`)**: Componentes reutilizables (botones, pipes, directivas, modelos). Se importa en cada feature module que lo necesite.
-- **Feature Modules (`features/`)**: Cada funcionalidad de negocio es un módulo independiente con lazy loading. Internamente cada feature tiene su propia estructura de pages (smart components), components (dumb/presentational), services y models.
+**b) SDK y Gradle desactualizados:**
+Cordova Android 15 requiere `build-tools;36.0.0` y Gradle 8+, pero el entorno solo tenía build-tools 34 y Gradle 7.5. Fue necesario instalar Gradle 8.12 manualmente (descarga del ZIP a `$HOME/gradle/`) y actualizar los build-tools del SDK con `sdkmanager --install "build-tools;36.0.0" "platforms;android-36"`. El Gradle wrapper de Cordova además descargó Gradle 8.14.2 automáticamente.
 
-Los **smart components** (pages) gestionan el estado y llaman a servicios. Los **dumb components** reciben datos por @Input() y emiten eventos por @Output(), sin dependencias de servicios. Esto facilita testing, reutilización y separación de responsabilidades.
+**c) Firebase Remote Config sin credenciales:**
+Implementar el FeatureFlagService requería manejar el caso donde Firebase no está configurado (credenciales vacías). Se implementó un patrón de **graceful degradation**: si `environment.firebase.projectId` está vacío, el servicio usa `DEFAULT_FLAGS` locales sin intentar conectar a Firebase, evitando errores en tiempo de ejecución.
 
-Para escalar, aplicaría además: **state management** con NgRx o señales de Angular para features complejas, **barrel exports** (index.ts) para simplificar imports, y **path aliases** en tsconfig para imports limpios.
+**d) Estado reactivo con filtros compuestos:**
+Combinar múltiples filtros (estado, categoría, texto de búsqueda) de forma reactiva requirió usar `combineLatest` sobre BehaviorSubjects. El desafío fue mantener la inmutabilidad y que los filtros se aplicaran en cadena sin mutar el array original de tareas.
 
-### 2. ¿Qué estrategias utilizaría para optimizar el rendimiento de una aplicación Ionic con muchos datos?
+### 2. ¿Qué técnicas de optimización de rendimiento aplicaste y por qué?
 
-Aplicaría las siguientes estrategias escalonadas:
+| Técnica | Implementación | Por qué |
+|---------|---------------|---------|
+| **OnPush Change Detection** | En todos los componentes | Reduce los ciclos de detección de cambios. Angular solo re-evalúa el componente cuando cambian sus `@Input()` o se llama `markForCheck()`. En una lista de +100 tareas, esto evita re-renderizados innecesarios |
+| **trackBy en *ngFor** | En todas las listas (tareas, categorías, chips) | Sin trackBy, Angular destruye y recrea todos los nodos DOM al cambiar la lista. Con trackBy por `id`, solo actualiza los elementos que realmente cambiaron |
+| **Lazy Loading** | Módulos `TasksModule` y `CategoriesModule` con `loadChildren` | Reduce el bundle inicial de ~300KB a ~150KB. El usuario solo descarga el módulo de categorías cuando navega a esa sección |
+| **PreloadAllModules** | Configurado en `app-routing.module.ts` | Después del bootstrap inicial, precarga los módulos lazy en segundo plano. Así la primera carga es rápida y la navegación posterior es instantánea |
+| **takeUntil + destroy$** | En todos los componentes con subscripciones | Previene memory leaks al destruir componentes. Cada componente tiene un `Subject` que se completa en `ngOnDestroy`, cancelando todas las subscripciones automáticamente |
+| **BehaviorSubject + combineLatest** | En TaskService y CategoryService | Estado reactivo sin polling. Los componentes reciben actualizaciones push cuando cambian los datos, en lugar de consultar periódicamente |
+| **Inmutabilidad con spread** | En todas las operaciones de mutación de arrays | `[...current, newItem]` en vez de `current.push()`. Esto permite a OnPush detectar el cambio de referencia y también facilita debugging y time-travel |
 
-1. **Virtual Scrolling** (`ion-virtual-scroll` o `@angular/cdk/scrolling`): Renderiza solo los elementos visibles en viewport, crucial para listas de cientos/miles de items.
+### 3. ¿Cómo aseguraste la calidad y mantenibilidad del código?
 
-2. **OnPush Change Detection**: Reducir los ciclos de detección de cambios. Solo se re-evalúan componentes cuando cambian sus inputs explícitamente.
+**Typing estricto (TypeScript strict mode):**
+- `strict: true` en tsconfig.json fuerza tipado explícito, null checks, y prohíbe `any` implícito
+- Interfaces definidas para todos los modelos (`Task`, `Category`, `FeatureFlags`, `TaskFilter`)
+- Los servicios devuelven `Observable<Task>` en vez de `Observable<any>`
 
-3. **trackBy en *ngFor**: Evita recrear elementos DOM al mutar la lista. Angular reutiliza nodos existentes basándose en el identificador.
+**Arquitectura modular Clean Architecture:**
+- Separación en capas: `core/` (singleton services), `shared/` (modelos), `features/` (funcionalidades)
+- **Smart/Dumb component pattern**: Las pages (smart) gestionan estado y lógica. Los components (dumb) solo reciben `@Input()` y emiten `@Output()`. Esto hace que los dumb components sean fáciles de testear y reutilizar
+- Path aliases (`@core`, `@shared`, `@features`) para imports limpios sin rutas relativas largas
 
-4. **Lazy Loading de módulos**: Cargar solo el código necesario para la vista actual. Reduce el bundle inicial y el tiempo de First Contentful Paint.
+**Tests unitarios (35 tests, 83% cobertura):**
+- Tests para los 3 servicios principales con mocks de dependencias
+- Cobertura de CRUD completo, filtros, validaciones y edge cases
+- Karma + Jasmine con ChromeHeadless para CI/CD
 
-5. **Paginación o infinite scroll**: No cargar todos los datos de golpe. `ion-infinite-scroll` carga más datos conforme el usuario hace scroll.
+**Patrones reactivos consistentes:**
+- Todos los servicios usan el mismo patrón: `BehaviorSubject` privado + método público que retorna `Observable`
+- Cleanup consistente con `takeUntil(this.destroy$)` en cada componente
+- No hay subscripciones huérfanas ni `subscribe()` sin cleanup
 
-6. **Memoización y pipes puros**: Usar pipes puros para transformaciones costosas que Angular cachea automáticamente.
-
-7. **Web Workers**: Para operaciones pesadas de procesamiento (filtrado complejo, cálculos), mover la lógica a un web worker para no bloquear el main thread.
-
-8. **Índices en almacenamiento**: Si se usa SQLite/IndexedDB, crear índices en campos de búsqueda/filtrado frecuentes.
-
-### 3. ¿Cómo implementaría un sistema de caché offline con sincronización para una app híbrida?
-
-Implementaría un sistema de **offline-first** con las siguientes capas:
-
-1. **Capa de almacenamiento local**: Usar `@ionic/storage` (IndexedDB) o SQLite para almacenar datos estructurados. Cada registro tiene un campo `syncStatus` ('synced', 'pending', 'conflict') y `updatedAt` timestamp.
-
-2. **Cola de operaciones pendientes**: Las operaciones CRUD se ejecutan localmente primero y se encolan en una "sync queue" con el tipo de operación, payload y timestamp. Si hay red, se sincronizan inmediatamente; si no, quedan en cola.
-
-3. **Detección de conectividad**: Usar el plugin `Network` de Capacitor/Cordova y `navigator.onLine` para detectar cambios de conectividad. Al recuperar conexión, procesar la cola FIFO.
-
-4. **Resolución de conflictos**: Estrategia "last-write-wins" basada en timestamps para casos simples. Para datos críticos, implementar CRDT (Conflict-free Replicated Data Types) o presentar al usuario las versiones en conflicto para resolución manual.
-
-5. **Sincronización delta**: Enviar solo los cambios desde el último `lastSyncTimestamp`, no todos los datos. El servidor responde con los cambios remotos desde esa fecha.
-
-6. **Service Worker**: Para cachear assets estáticos y respuestas API con estrategias (@angular/service-worker): Cache First para assets, Network First para API calls.
+**Convenciones de código:**
+- Nomenclatura consistente: `*.service.ts`, `*.page.ts`, `*.component.ts`, `*.model.ts`
+- Un archivo por componente/servicio
+- Commits semánticos (feat, chore, docs, test, build)
