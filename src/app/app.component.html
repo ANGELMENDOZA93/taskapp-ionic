@@ -1,3 +1,8 @@
 <ion-app>
-  <ion-router-outlet></ion-router-outlet>
+  <div *ngIf="maintenanceMode" class="maintenance-screen">
+    <ion-icon name="construct-outline"></ion-icon>
+    <h1>App en Mantenimiento</h1>
+    <p>Estamos trabajando para mejorar tu experiencia. Vuelve pronto.</p>
+  </div>
+  <ion-router-outlet *ngIf="!maintenanceMode"></ion-router-outlet>
 </ion-app>

@@ -35,6 +35,16 @@ import { FeatureFlagService } from '@core/services/feature-flag.service';
       </ion-toolbar>
     </ion-header>
     <ion-content>
+      <ion-card *ngIf="welcomeMessage && !welcomeDismissed" color="primary" class="ion-margin">
+        <ion-card-content>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <p style="margin:0;flex:1;color:white;">{{ welcomeMessage }}</p>
+            <ion-button fill="clear" size="small" (click)="dismissWelcome()" style="--color:white;">
+              <ion-icon slot="icon-only" name="close-outline"></ion-icon>
+            </ion-button>
+          </div>
+        </ion-card-content>
+      </ion-card>
       <app-task-filter
         [filter]="filter"
         [categories]="categoriesEnabled ? categories : []"
@@ -60,8 +70,15 @@ import { FeatureFlagService } from '@core/services/feature-flag.service';
         </div>
       </ng-template>
 
+      <p *ngIf="totalTaskCount >= maxTasksPerUser"
+         class="ion-text-center"
+         style="color:var(--ion-color-medium);font-size:13px;padding:0 16px 80px;">
+        Has alcanzado el límite de {{ maxTasksPerUser }} tareas
+      </p>
+
       <ion-fab vertical="bottom" horizontal="end" slot="fixed">
-        <ion-fab-button routerLink="/tasks/new">
+        <ion-fab-button [routerLink]="totalTaskCount < maxTasksPerUser ? '/tasks/new' : null"
+                        [disabled]="totalTaskCount >= maxTasksPerUser">
           <ion-icon name="add"></ion-icon>
         </ion-fab-button>
       </ion-fab>
@@ -81,6 +98,10 @@ export class TaskListPage implements OnInit, OnDestroy {
   showSearch = false;
   searchTerm = '';
   categoriesEnabled = true;
+  welcomeMessage = '';
+  welcomeDismissed = false;
+  maxTasksPerUser = 100;
+  totalTaskCount = 0;
   private categoryMap = new Map<string, Category>();
   private destroy$ = new Subject<void>();
 
@@ -121,6 +142,27 @@ export class TaskListPage implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(enabled => {
         this.categoriesEnabled = enabled;
+        this.cdr.markForCheck();
+      });
+
+    this.featureFlagService.getFlag('welcomeMessage')
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(msg => {
+        this.welcomeMessage = msg;
+        this.cdr.markForCheck();
+      });
+
+    this.featureFlagService.getFlag('maxTasksPerUser')
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(max => {
+        this.maxTasksPerUser = max;
+        this.cdr.markForCheck();
+      });
+
+    this.taskService.getTasks()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(all => {
+        this.totalTaskCount = all.length;
         this.cdr.markForCheck();
       });
   }
@@ -177,5 +219,10 @@ export class TaskListPage implements OnInit, OnDestroy {
       });
       await toast.present();
     });
+  }
+
+  dismissWelcome(): void {
+    this.welcomeDismissed = true;
+    this.cdr.markForCheck();
   }
 }

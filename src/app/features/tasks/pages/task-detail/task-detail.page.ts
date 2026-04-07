@@ -88,6 +88,8 @@ export class TaskDetailPage implements OnInit, OnDestroy {
   categoriesLoaded = false;
   isEditing = false;
   private taskId?: string;
+  private currentTaskCount = 0;
+  private maxTasksPerUser = 100;
   private destroy$ = new Subject<void>();
 
   constructor(
@@ -124,6 +126,14 @@ export class TaskDetailPage implements OnInit, OnDestroy {
         this.cdr.detectChanges();
       });
 
+    this.featureFlagService.getFlag('maxTasksPerUser')
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(max => { this.maxTasksPerUser = max; });
+
+    this.taskService.getTasks()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(tasks => { this.currentTaskCount = tasks.length; });
+
     this.taskId = this.route.snapshot.paramMap.get('id') || undefined;
     if (this.taskId) {
       this.isEditing = true;
@@ -154,6 +164,10 @@ export class TaskDetailPage implements OnInit, OnDestroy {
 
   async onSave(): Promise<void> {
     if (this.form.invalid) return;
+    if (!this.isEditing && this.currentTaskCount >= this.maxTasksPerUser) {
+      await this.showToast(`Límite de ${this.maxTasksPerUser} tareas alcanzado`, 'warning');
+      return;
+    }
 
     const formValue = this.form.value;
     const data = {
@@ -176,11 +190,11 @@ export class TaskDetailPage implements OnInit, OnDestroy {
     }
   }
 
-  private async showToast(message: string): Promise<void> {
+  private async showToast(message: string, color = 'success'): Promise<void> {
     const toast = await this.toastCtrl.create({
       message,
       duration: 2000,
-      color: 'success',
+      color,
       position: 'bottom',
     });
     await toast.present();

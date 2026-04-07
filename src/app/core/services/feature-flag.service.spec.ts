@@ -2,16 +2,25 @@ import { TestBed } from '@angular/core/testing';
 import { FeatureFlagService } from './feature-flag.service';
 import { firstValueFrom } from 'rxjs';
 import { DEFAULT_FLAGS } from '@shared/models/feature-flags.model';
+import { environment } from '@env/environment';
 
 describe('FeatureFlagService', () => {
   let service: FeatureFlagService;
+  let originalFirebase: typeof environment.firebase;
 
   beforeEach(() => {
+    originalFirebase = environment.firebase;
+    (environment as any).firebase = undefined;
+
     TestBed.configureTestingModule({
       providers: [FeatureFlagService],
     });
 
     service = TestBed.inject(FeatureFlagService);
+  });
+
+  afterEach(() => {
+    (environment as any).firebase = originalFirebase;
   });
 
   it('should be created', () => {
@@ -45,6 +54,6 @@ describe('FeatureFlagService', () => {
   it('should treat non-boolean flags as truthy/falsy in isEnabled', async () => {
     await service.initialize();
     const maxTasks = await firstValueFrom(service.isEnabled('maxTasksPerUser'));
-    expect(maxTasks).toBeTrue(); // 100 is truthy
+    expect(maxTasks).toBeTrue();
   });
 });

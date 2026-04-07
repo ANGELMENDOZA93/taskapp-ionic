@@ -6,12 +6,13 @@ import { Category } from '@shared/models/category.model';
   selector: 'app-task-item',
   template: `
     <ion-item-sliding>
-      <ion-item (click)="edit.emit(task)" button>
+      <ion-item button>
         <ion-checkbox slot="start"
                       [checked]="task.completed"
+                      (click)="$event.stopPropagation()"
                       (ionChange)="onToggle($event)">
         </ion-checkbox>
-        <ion-label [class.completed]="task.completed">
+        <ion-label (click)="edit.emit(task)" [class.completed]="task.completed">
           <h2>{{ task.title }}</h2>
           <p *ngIf="category">
             <ion-icon [name]="category.icon || 'folder-outline'"

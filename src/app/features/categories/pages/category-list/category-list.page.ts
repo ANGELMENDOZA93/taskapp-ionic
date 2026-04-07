@@ -4,6 +4,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { Category } from '@shared/models/category.model';
 import { CategoryService } from '../../services/category.service';
+import { TaskService } from '@features/tasks/services/task.service';
 import { CategoryFormModalComponent } from '../../components/category-form-modal/category-form-modal.component';
 
 @Component({
@@ -49,6 +50,7 @@ export class CategoryListPage implements OnInit, OnDestroy {
 
   constructor(
     private categoryService: CategoryService,
+    private taskService: TaskService,
     private modalCtrl: ModalController,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController,
@@ -120,8 +122,10 @@ export class CategoryListPage implements OnInit, OnDestroy {
           text: 'Eliminar',
           role: 'destructive',
           handler: () => {
-            this.categoryService.deleteCategory(id).subscribe(() => {
-              this.showToast('Categoría eliminada');
+            this.taskService.clearCategoryFromTasks(id).subscribe(() => {
+              this.categoryService.deleteCategory(id).subscribe(() => {
+                this.showToast('Categoría eliminada');
+              });
             });
           },
         },

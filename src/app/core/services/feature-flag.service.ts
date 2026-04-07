@@ -4,13 +4,13 @@ import { map } from 'rxjs/operators';
 import { FeatureFlags, DEFAULT_FLAGS } from '@shared/models/feature-flags.model';
 import { environment } from '@env/environment';
 
-import { initializeApp, FirebaseApp } from 'firebase/app';
-import { getRemoteConfig, RemoteConfig, fetchAndActivate, getValue } from 'firebase/remote-config';
+import { initializeApp, deleteApp, FirebaseApp } from 'firebase/app';
+import { getRemoteConfig, fetchConfig, activate, getValue } from 'firebase/remote-config';
 
 @Injectable({ providedIn: 'root' })
 export class FeatureFlagService {
   private flags$ = new BehaviorSubject<FeatureFlags>(DEFAULT_FLAGS);
-  private remoteConfig: RemoteConfig | null = null;
+  private fetchCounter = 0;
 
   async initialize(): Promise<void> {
     try {
@@ -18,41 +18,50 @@ export class FeatureFlagService {
         console.warn('Firebase not configured, using default flags');
         return;
       }
-
-      const app: FirebaseApp = initializeApp(environment.firebase);
-      this.remoteConfig = getRemoteConfig(app);
-      this.remoteConfig.settings.minimumFetchIntervalMillis =
-        environment.production ? 3600000 : 0;
-
-      this.remoteConfig.defaultConfig = { ...DEFAULT_FLAGS } as Record<string, string | number | boolean>;
-
       await this.fetchFlags();
     } catch (error) {
-      console.warn('Firebase Remote Config initialization failed, using defaults', error);
+      console.error('[FeatureFlags] Initialization failed, using defaults:', error);
     }
   }
 
   async fetchFlags(): Promise<FeatureFlags> {
-    if (!this.remoteConfig) {
+    if (!environment.firebase?.projectId) {
       return DEFAULT_FLAGS;
     }
 
+    let app: FirebaseApp | null = null;
     try {
-      await fetchAndActivate(this.remoteConfig);
+      const appName = 'rc-fetch-' + (++this.fetchCounter);
+      app = initializeApp(environment.firebase, appName);
+      const rc = getRemoteConfig(app);
+      rc.settings.minimumFetchIntervalMillis = 0;
+      rc.defaultConfig = { ...DEFAULT_FLAGS } as Record<string, string | number | boolean>;
+
+      const t0 = Date.now();
+      await fetchConfig(rc);
+      await activate(rc);
+      console.log('[FeatureFlags] fetch took ' + (Date.now() - t0) + 'ms, status=' + rc.lastFetchStatus);
 
       const flags: FeatureFlags = {
-        enableCategories: getValue(this.remoteConfig, 'enableCategories').asBoolean(),
-        enableDarkMode: getValue(this.remoteConfig, 'enableDarkMode').asBoolean(),
-        enableExport: getValue(this.remoteConfig, 'enableExport').asBoolean(),
-        maxTasksPerUser: getValue(this.remoteConfig, 'maxTasksPerUser').asNumber(),
-        maintenanceMode: getValue(this.remoteConfig, 'maintenanceMode').asBoolean(),
-        welcomeMessage: getValue(this.remoteConfig, 'welcomeMessage').asString(),
+        enableCategories: getValue(rc, 'enableCategories').asBoolean(),
+        enableDarkMode: getValue(rc, 'enableDarkMode').asBoolean(),
+        enableExport: getValue(rc, 'enableExport').asBoolean(),
+        maxTasksPerUser: getValue(rc, 'maxTasksPerUser').asNumber(),
+        maintenanceMode: getValue(rc, 'maintenanceMode').asBoolean(),
+        welcomeMessage: getValue(rc, 'welcomeMessage').asString(),
       };
 
+      console.log('[FeatureFlags] values: enableCategories=' + flags.enableCategories +
+        ' welcomeMessage=' + flags.welcomeMessage);
+
       this.flags$.next(flags);
+
+      deleteApp(app).catch(() => {});
+
       return flags;
     } catch (error) {
-      console.warn('Failed to fetch remote config', error);
+      console.error('[FeatureFlags] fetch failed:', error);
+      if (app) { deleteApp(app).catch(() => {}); }
       return this.flags$.getValue();
     }
   }
