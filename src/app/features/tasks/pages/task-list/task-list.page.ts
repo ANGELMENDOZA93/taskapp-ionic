@@ -71,6 +71,10 @@ import { FeatureFlagService } from '@core/services/feature-flag.service';
   standalone: false,
 })
 export class TaskListPage implements OnInit, OnDestroy {
+
+  ionViewWillEnter(): void {
+    this.cdr.detectChanges();
+  }
   tasks: Task[] = [];
   categories: Category[] = [];
   filter: TaskFilter = { status: 'all' };

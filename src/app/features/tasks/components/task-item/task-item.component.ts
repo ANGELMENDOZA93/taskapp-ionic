@@ -24,6 +24,10 @@ import { Category } from '@shared/models/category.model';
           <p *ngIf="!category">
             {{ task.createdAt | date:'shortDate' }}
           </p>
+          <p *ngIf="task.dueDate" [class.overdue]="isOverdue">
+            <ion-icon name="calendar-outline" style="vertical-align: middle;"></ion-icon>
+            {{ task.dueDate | date:'mediumDate' }}
+          </p>
         </ion-label>
       </ion-item>
       <ion-item-options side="end">
@@ -38,6 +42,10 @@ import { Category } from '@shared/models/category.model';
       text-decoration: line-through;
       color: var(--ion-color-medium);
     }
+    .overdue {
+      color: var(--ion-color-danger);
+      font-weight: 500;
+    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false,
@@ -45,6 +53,11 @@ import { Category } from '@shared/models/category.model';
 export class TaskItemComponent {
   @Input() task!: Task;
   @Input() category?: Category;
+
+  get isOverdue(): boolean {
+    if (!this.task.dueDate || this.task.completed) return false;
+    return this.task.dueDate < new Date().toISOString().slice(0, 10);
+  }
   @Output() toggle = new EventEmitter<string>();
   @Output() edit = new EventEmitter<Task>();
   @Output() delete = new EventEmitter<string>();

@@ -50,12 +50,17 @@ import { FeatureFlagService } from '@core/services/feature-flag.service';
           </ion-textarea>
         </ion-item>
 
-        <ion-item *ngIf="categoriesEnabled">
+        <ion-item>
+          <ion-label position="stacked">Fecha límite</ion-label>
+          <ion-input type="date" formControlName="dueDate"></ion-input>
+        </ion-item>
+
+        <ion-item *ngIf="categoriesEnabled && categoriesLoaded">
           <ion-select formControlName="categoryId"
                       label="Categoría"
                       labelPlacement="stacked"
                       placeholder="Seleccionar categoría"
-                      interface="action-sheet">
+                      interface="alert">
             <ion-select-option [value]="null">Sin categoría</ion-select-option>
             <ion-select-option *ngFor="let cat of categories; trackBy: trackById"
                                [value]="cat.id">
@@ -80,6 +85,7 @@ export class TaskDetailPage implements OnInit, OnDestroy {
   form!: FormGroup;
   categories: Category[] = [];
   categoriesEnabled = true;
+  categoriesLoaded = false;
   isEditing = false;
   private taskId?: string;
   private destroy$ = new Subject<void>();
@@ -100,6 +106,7 @@ export class TaskDetailPage implements OnInit, OnDestroy {
       title: ['', [Validators.required, Validators.maxLength(200)]],
       description: ['', Validators.maxLength(1000)],
       categoryId: [null],
+      dueDate: [null],
     });
 
     this.featureFlagService.isEnabled('enableCategories')
@@ -113,7 +120,8 @@ export class TaskDetailPage implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe(cats => {
         this.categories = cats;
-        this.cdr.markForCheck();
+        this.categoriesLoaded = true;
+        this.cdr.detectChanges();
       });
 
     this.taskId = this.route.snapshot.paramMap.get('id') || undefined;
@@ -127,6 +135,7 @@ export class TaskDetailPage implements OnInit, OnDestroy {
               title: task.title,
               description: task.description || '',
               categoryId: task.categoryId || null,
+              dueDate: task.dueDate || null,
             });
             this.cdr.markForCheck();
           }
@@ -151,6 +160,7 @@ export class TaskDetailPage implements OnInit, OnDestroy {
       title: formValue.title.trim(),
       description: formValue.description?.trim() || undefined,
       categoryId: formValue.categoryId || undefined,
+      dueDate: formValue.dueDate || undefined,
     };
 
     if (this.isEditing && this.taskId) {

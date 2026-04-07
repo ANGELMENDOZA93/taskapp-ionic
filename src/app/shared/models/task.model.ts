@@ -4,6 +4,7 @@ export interface Task {
   description?: string;
   completed: boolean;
   categoryId?: string;
+  dueDate?: string;
   createdAt: string;
   updatedAt: string;
 }
